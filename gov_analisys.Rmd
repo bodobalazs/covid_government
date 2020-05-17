@@ -1,0 +1,233 @@
+---
+title: "covid gov"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) # includes dplyr, tidyr and ggplot2
+library(jtools)
+library(MASS)
+library(sjPlot)
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- cor(x, y, use= "complete.obs")
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt)
+}
+
+anal<-read.csv('data/20200515_complete.csv')
+anal<-anal%>%dplyr::mutate_if( is.numeric, as.numeric)
+```
+#introduction
+
+The main question of this excercise is to how different country level characteristics impact the per capita case count.
+Data was prepared by a separate ipython notebook (gov_action_analyisi.ipynb), from the following sources:
+* Oxford Coronavirus Government Response Tracker (OxCGRT)
+* freedom house democracy report (higher numbers mean stronger democracies)
+* reporters without frontiers press freedom report (lower numbers mean stronger press freedoms)
+* latest case and death per capita, and gdp/capita from "our world in data"
+
+The OxCGRT data is coded as follows: for various lockdown measures and levels we calculated the time (in days) between the first recorded covid case, and the date of government action. Higher numbers mean longer government inaction. 
+
+# Correlation matrix
+
+```{r correlation, echo=FALSE, out.width=200, fig.width=20 }
+
+
+correlations <- anal %>%
+  dplyr::select (total_cases_per_million, 
+                 median_age, 
+                 aged_65_older,
+                 aged_70_older,
+                 gdp_per_capita,
+                 freepress,
+                 democracy,
+                 stringencyindex,
+                 daystomoststingent,
+                 C1_School_closing_3,
+                 C2_Workplace_closing_3,
+                 C3_Cancel_public_events_2,
+                 C4_Restrictions_on_gatherings_3,
+                 C4_Restrictions_on_gatherings_4,
+                 C6_Stay_at_home_requirements_3,
+                 C7_Restrictions_on_internal_movement_2,
+                 C8_International_travel_controls_3,
+                 C8_International_travel_controls_4) %>%
+      dplyr::mutate_if( is.numeric, as.numeric)%>%
+  as.matrix() %>%
+  pairs(lower.panel = panel.smooth,
+        upper.panel = panel.cor,
+      gap=0, 
+      row1attop=FALSE, 
+      main="Correlation coefficients on the upper panels, scatter plots in the lower panels with LOESS smooths")
+
+```
+
+# regression models
+
+
+```{r regressions, echo=FALSE}
+m1 <- glm.nb (total_cases_per_million ~ 
+                          C4_Restrictions_on_gatherings_3 +
+                          democracy                           ,
+                        data = anal)
+
+m2 <- glm.nb (total_cases_per_million ~ 
+                          C4_Restrictions_on_gatherings_4 +
+                          democracy                           ,
+                        data = anal)
+
+m3 <- glm.nb (total_cases_per_million ~ 
+                          stringencyindex +
+                          democracy                           ,
+                        data = anal)
+
+m4 <- glm.nb (total_cases_per_million ~ 
+                          daystomoststingent +
+                          democracy                           ,
+                        data = anal)
+
+m5 <- glm.nb (total_cases_per_million ~ 
+                          C2_Workplace_closing_3 +
+                          democracy                           ,
+                        data = anal)
+
+m6 <- glm.nb (total_cases_per_million ~ 
+                          C1_School_closing_3 +
+                          democracy                           ,
+                        data = anal)
+
+
+export_summs(m1,m2,m3,m4,m5,m6,
+             digits=3, 
+             statistics = "all")
+```
+In the global models, the democracy effect and the speed of lockdowns are both significant. SPeedier lockdown lowers the number of per capita cases, while more democratic countries tend to have more cases.
+
+
+
+```{r best global model}
+plot(m1)
+
+plot_model(m1,type = "pred")
+
+quantile(anal$total_cases_per_million, na.rm = T)
+```
+
+```{r interaction}
+i1<-glm.nb (total_cases_per_million ~ 
+                          C2_Workplace_closing_3 *
+                          democracy                           ,
+                        data = anal)
+
+summary(i1)
+```
+
+```{r plot global interaction}
+hist (anal$daystomoststingent)
+plot_model(i1,type = "eff", terms=c('C2_Workplace_closing_3[-10:50]','democracy[25,70,100]'))
+```
+The interaction graph suggests that  if two  countries  immediately take  stict measures, the more democratic will start with a significant case penalty.
+
+
+# European countries only
+
+Let's run the same models for European countries only:
+```{r eu countries, echo=FALSE}
+anal1<-subset(anal, Region=="Europe")
+anal1$country
+```
+```{r eu corr matrix}
+
+correlations <- anal1 %>%
+  dplyr::select (total_cases_per_million, 
+                 median_age, 
+                 freepress,
+                 democracy,
+                 gdp_per_capita,
+                 stringencyindex,
+                 daystomoststingent,
+                 C1_School_closing_3,
+                 C2_Workplace_closing_3,
+                 C3_Cancel_public_events_2,
+                 C4_Restrictions_on_gatherings_4,
+                 C6_Stay_at_home_requirements_3) %>%
+      dplyr::mutate_if( is.numeric, as.numeric)%>%
+  as.matrix() %>%
+  pairs(lower.panel = panel.smooth,
+        upper.panel = panel.cor,
+      gap=0, 
+      row1attop=FALSE, 
+      main="Correlation coefficients on the upper panels, scatter plots in the lower panels with LOESS smooths")
+
+```
+
+```{r eu regressions}
+m1eu <- glm.nb (total_cases_per_million ~ 
+                          C4_Restrictions_on_gatherings_3 +
+                          democracy                           ,
+                        data = anal1)
+
+m2eu <- glm.nb (total_cases_per_million ~ 
+                          C4_Restrictions_on_gatherings_4 +
+                          democracy                           ,
+                        data = anal1)
+
+m3eu <- glm.nb (total_cases_per_million ~ 
+                          stringencyindex +
+                          democracy                           ,
+                        data = anal1)
+
+m4eu <- glm.nb (total_cases_per_million ~ 
+                          daystomoststingent +
+                          democracy                           ,
+                        data = anal1)
+
+m5eu <- glm.nb (total_cases_per_million ~ 
+                          C2_Workplace_closing_3 +
+                          democracy                           ,
+                        data = anal1)
+
+m6eu <- glm.nb (total_cases_per_million ~ 
+                          C1_School_closing_3 +
+                          democracy                           ,
+                        data = anal1)
+
+m7eu <- glm.nb (total_cases_per_million ~ 
+                          gdp_per_capita +
+                          democracy                           ,
+                        data = anal1)
+
+export_summs(m1eu,m2eu,m3eu,m4eu,m5eu,m6eu,m7eu,
+             digits=3, 
+             statistics = "all")
+```
+Within Europe, the democracy variable is the most consistently significant variable, with a positve sign> stronger democracies tend to have higher per capita cases. Interestingly, we could not find any  significant effect of the speed of government actions. On the other hand wealth has the strongest effect: richer countries have more cases. Wealth and democracy index is strongly correlated.
+
+```{r eu plot}
+
+plot_model(m6eu,type = "pred")
+```
+
+
+There are no interactions.
+```{r eu interaction}
+i1eu<-glm.nb (total_cases_per_million ~ 
+                          C2_Workplace_closing_3 *
+                          democracy                           ,
+                        data = anal1)
+
+summary(i1eu)
+```
+
+```{r plot eu interaction}
+hist (anal$daystomoststingent)
+plot_model(i1eu,type = "eff", terms=c('C2_Workplace_closing_3[-10:50]','democracy[25,70,100]'))
+```
