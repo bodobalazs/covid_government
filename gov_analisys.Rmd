@@ -11,6 +11,7 @@ library(tidyverse) # includes dplyr, tidyr and ggplot2
 library(jtools)
 library(MASS)
 library(sjPlot)
+
 panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
 {
     usr <- par("usr"); on.exit(par(usr))
@@ -22,23 +23,50 @@ panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
     text(0.5, 0.5, txt)
 }
 
+vars<-c('total_tests',  'total_tests_per_thousand',
+       'population_density', 'median_age', 'aged_65_older',
+       'aged_70_older', 'gdp_per_capita', 'extreme_poverty',
+       'cvd_death_rate', 'diabetes_prevalence', 'female_smokers',
+       'male_smokers', 'handwashing_facilities', 'hospital_beds_per_100k',
+       'freepress', 'democracy',
+       'stringencyindex', 'daystomoststingent',
+       'C8_International_travel_controls_4',
+       'C8_International_travel_controls_3',
+       'C8_International_travel_controls_2',
+       'C8_International_travel_controls_1',
+       'C7_Restrictions_on_internal_movement_2',
+       'C7_Restrictions_on_internal_movement_1',
+       'C6_Stay_at_home_requirements_3', 'C6_Stay_at_home_requirements_2',
+       'C6_Stay_at_home_requirements_1', 'C5_Close_public_transport_2',
+       'C5_Close_public_transport_1', 'C4_Restrictions_on_gatherings_4',
+       'C4_Restrictions_on_gatherings_3',
+       'C4_Restrictions_on_gatherings_2',
+       'C4_Restrictions_on_gatherings_1', 'C3_Cancel_public_events_2',
+       'C3_Cancel_public_events_1', 'C2_Workplace_closing_3',
+       'C2_Workplace_closing_2', 'C2_Workplace_closing_1',
+       'C1_School_closing_3', 'C1_School_closing_2',
+       'C1_School_closing_1')
+
+# data created by ipython notbeook. that code needs to be run to upadte the dataset with the latest case counts!
 anal<-read.csv('data/20200515_complete.csv')
 anal<-anal%>%dplyr::mutate_if( is.numeric, as.numeric)
-```
-#introduction
 
-The main question of this excercise is to how different country level characteristics impact the per capita case count.
-Data was prepared by a separate ipython notebook (gov_action_analyisi.ipynb), from the following sources:
+
+```
+# Introduction
+
+The main question of this exercise is to how different country level characteristics impact the per capita case count.
+Data was prepared by a separate ipython notebook (gov_action_data_prepapartion.ipynb), from the following sources:
 * Oxford Coronavirus Government Response Tracker (OxCGRT)
 * freedom house democracy report (higher numbers mean stronger democracies)
 * reporters without frontiers press freedom report (lower numbers mean stronger press freedoms)
-* latest case and death per capita, and gdp/capita from "our world in data"
+* latest case and death per capita, and GDP/capita from "our world in data"
 
-The OxCGRT data is coded as follows: for various lockdown measures and levels we calculated the time (in days) between the first recorded covid case, and the date of government action. Higher numbers mean longer government inaction. 
+The OxCGRT data is coded as follows: for various lock down measures and levels we calculated the time (in days) between the first recorded covid case, and the date of government action. Higher numbers mean longer government inaction. 
 
 # Correlation matrix
 
-```{r correlation, echo=FALSE, out.width=200, fig.width=20 }
+```{r correlation, echo=FALSE, out.width="200%", fig.width = 10 }
 
 
 correlations <- anal %>%
@@ -70,7 +98,20 @@ correlations <- anal %>%
 
 ```
 
-# regression models
+# Simple OLS models
+
+In the first step, we run simple OLS regressions with the total case per million as dependent variable, and a single independent var.
+The table here was generated in python, and saved as a plot. It is clear that though speedy government action matters, lock down-related variables are not the most important in explaining the variance. Wealth is the most relevant, testing, median age, democracy index are all very good explanatory variables.
+
+``` {r ols global plot, echo=FALSE}
+knitr::include_graphics('graphs/ols_case_per_million_world.jpg')
+```
+
+# Regression models
+
+Instead of the correlation, here we use a Negative Binomial model, which fits better our count data, and use the democracy variable, and some of the lock down speed variables. 
+The democracy variable is from Freedom House, and measures the quality of democratic institutions in a country.
+Lock down variables measure how many days did it take for a country to implement various lock down measures after the first registered case.
 
 
 ```{r regressions, echo=FALSE}
@@ -103,25 +144,26 @@ m6 <- glm.nb (total_cases_per_million ~
                           C1_School_closing_3 +
                           democracy                           ,
                         data = anal)
+```
 
-
+```{r simple model sums, echo=FALSE}
 export_summs(m1,m2,m3,m4,m5,m6,
              digits=3, 
              statistics = "all")
 ```
-In the global models, the democracy effect and the speed of lockdowns are both significant. SPeedier lockdown lowers the number of per capita cases, while more democratic countries tend to have more cases.
+In the global models, the democracy effect and the speed of lock downs are both significant. Speedier lock down lowers the number of per capita cases, while more democratic countries tend to have more cases.
 
 
 
 ```{r best global model}
 plot(m1)
-
 plot_model(m1,type = "pred")
-
-quantile(anal$total_cases_per_million, na.rm = T)
 ```
+## interaction model
 
-```{r interaction}
+In the interaction model we look at how the effect of the speedy lock down changes in countries with different levels of democracy. All values are significant. The negative sign of the interaction term suggests that the effect of speedy action is lover in better democracies.
+
+```{r interaction, echo=FALSE}
 i1<-glm.nb (total_cases_per_million ~ 
                           C2_Workplace_closing_3 *
                           democracy                           ,
@@ -130,21 +172,28 @@ i1<-glm.nb (total_cases_per_million ~
 summary(i1)
 ```
 
-```{r plot global interaction}
+```{r plot global interaction, echo=FALSE}
 hist (anal$daystomoststingent)
 plot_model(i1,type = "eff", terms=c('C2_Workplace_closing_3[-10:50]','democracy[25,70,100]'))
 ```
-The interaction graph suggests that  if two  countries  immediately take  stict measures, the more democratic will start with a significant case penalty.
+The interaction graph suggests that even if two  countries  immediately take  strict measures, the more democratic will start with a significant case penalty.
 
 
 # European countries only
+
+## OLS regressions
+
+First, let's see the simple OLS regressions for European countries only
+``` {r ols eu plot, echo=FALSE}
+knitr::include_graphics('graphs/ols_case_per_million_europe.jpg')
+```
 
 Let's run the same models for European countries only:
 ```{r eu countries, echo=FALSE}
 anal1<-subset(anal, Region=="Europe")
 anal1$country
 ```
-```{r eu corr matrix}
+```{r eu corr matrix, echo=FALSE}
 
 correlations <- anal1 %>%
   dplyr::select (total_cases_per_million, 
@@ -169,7 +218,7 @@ correlations <- anal1 %>%
 
 ```
 
-```{r eu regressions}
+```{r eu regressions, echo=FALSE}
 m1eu <- glm.nb (total_cases_per_million ~ 
                           C4_Restrictions_on_gatherings_3 +
                           democracy                           ,
@@ -209,16 +258,24 @@ export_summs(m1eu,m2eu,m3eu,m4eu,m5eu,m6eu,m7eu,
              digits=3, 
              statistics = "all")
 ```
-Within Europe, the democracy variable is the most consistently significant variable, with a positve sign> stronger democracies tend to have higher per capita cases. Interestingly, we could not find any  significant effect of the speed of government actions. On the other hand wealth has the strongest effect: richer countries have more cases. Wealth and democracy index is strongly correlated.
+Within Europe, the democracy variable is the most consistently significant variable, with a positive sign: stronger democracies tend to have higher per capita cases. Interestingly, we could not find any  significant effect of the speed of government actions. On the other hand wealth has the strongest effect: richer countries have more cases. Wealth and democracy index is strongly correlated.
+This suggests that in Europe the worst case counts are characteristic of rich countries. Wealth is a proxy for a number of potential factors, which may all positively effect case count:
 
-```{r eu plot}
+* higher internal and international mobility
+* higher active elderly population
+* more elderly living in care homes
+* more guest workers, and seasonal workers
+* slower institutional decision making, and more lax enforcement
+
+
+```{r eu plot, echo=FALSE}
 
 plot_model(m6eu,type = "pred")
 ```
 
 
 There are no interactions.
-```{r eu interaction}
+```{r eu interaction, echo=FALSE}
 i1eu<-glm.nb (total_cases_per_million ~ 
                           C2_Workplace_closing_3 *
                           democracy                           ,
@@ -227,7 +284,7 @@ i1eu<-glm.nb (total_cases_per_million ~
 summary(i1eu)
 ```
 
-```{r plot eu interaction}
+```{r plot eu interaction, echo=FALSE}
 hist (anal$daystomoststingent)
 plot_model(i1eu,type = "eff", terms=c('C2_Workplace_closing_3[-10:50]','democracy[25,70,100]'))
 ```
