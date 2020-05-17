@@ -105,6 +105,8 @@ The table here was generated in python, and saved as a plot. It is clear that th
 
 ``` {r ols global plot, echo=FALSE}
 knitr::include_graphics('graphs/ols_case_per_million_world.jpg')
+
+cor(anal$total_cases_per_million,anal$freepress,use= "complete.obs")
 ```
 
 # Regression models
